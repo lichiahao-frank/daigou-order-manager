@@ -2,6 +2,8 @@
 
 **網址：https://lichiahao-frank.github.io/daigou-order-manager/**
 
+使用需要密碼，請向管理者索取。
+
 所有處理都在使用者自己的瀏覽器裡完成：Excel 和截圖都不會上傳，不需要伺服器、不需要 API 金鑰。
 
 ## 怎麼用
@@ -28,6 +30,8 @@
 
 ## 已知限制
 
+- 密碼只在瀏覽器端檢查（GitHub Pages 沒有伺服器），只能擋一般使用者，擋不住懂技術的人。
+
 - 手寫字（型錄上的紅筆中文名與台幣價）辨識不可靠，需要手動填。
 - 留言解析規則目前只用 LINE 社群的截圖測過；FB、IG 的留言排版可能拆不準，核對表可以手動修。
 - 辨識模型與執行引擎來自 Hugging Face 與 jsDelivr 這兩個免費服務；如果它們連不上，辨識就不能用，但 Excel 功能不受影響。
@@ -39,6 +43,7 @@ npm install
 npm run build   # 重新打包 OCR 背景執行緒（src/ocr-worker.js → public/vendor/ocr-worker.js）
 npm test        # Excel 產生測試 + 留言解析規則測試
 npm run dev     # 本機開 http://localhost:5173
+APP_GATE=<密碼> python3 test/ui_test.py   # 瀏覽器端到端測試（需要 Chrome 與原始截圖、Excel）
 ```
 
 網站本身是 `public/` 資料夾裡的靜態檔案。推送到 `main` 後，GitHub Actions（`.github/workflows/pages.yml`）會自動發布到 GitHub Pages。

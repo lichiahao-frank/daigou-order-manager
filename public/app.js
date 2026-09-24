@@ -6,6 +6,31 @@
   const MAX_SIDE = 2400; // 圖片長邊上限，太大會先縮小再送出
   const CONCURRENCY = 1; // 同一個辨識引擎一次處理一張
 
+  // ---------- 簡易密碼門檻 ----------
+  // 注意：靜態網站只能在瀏覽器端檢查，只能擋一般使用者，擋不住懂技術的人
+  const GATE_HASH = '812de6e718f869feb16b45c6bbcfdb1269fe6f6fffdc2420166482e3cd0aa647';
+  const GATE_KEY = 'order-app-gate';
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  function openApp() {
+    $('gate').classList.add('hidden');
+    $('appRoot').classList.remove('hidden');
+  }
+  try { if (localStorage.getItem(GATE_KEY) === GATE_HASH) openApp(); } catch { /* 無法記住就每次輸入 */ }
+  $('gateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const hash = await sha256($('gateInput').value.trim());
+    if (hash !== GATE_HASH) {
+      $('gateMsg').textContent = '密碼錯誤';
+      $('gateInput').select();
+      return;
+    }
+    try { localStorage.setItem(GATE_KEY, hash); } catch { /* 忽略 */ }
+    openApp();
+  });
+
   const state = {
     existing: null, // readWorkbook 結果
     fileName: '',

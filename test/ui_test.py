@@ -11,6 +11,16 @@ with sync_playwright() as p:
     pg.on('console', lambda m: logs.append(f'{m.type}: {m.text}'))
     pg.on('pageerror', lambda e: logs.append(f'PAGEERROR: {e}'))
     pg.goto(url)
+    # 密碼門檻：密碼從環境變數 APP_GATE 讀，不寫在程式裡
+    import os
+    gate = os.environ.get('APP_GATE', '')
+    pg.fill('#gateInput', 'wrong-password'); pg.click('#gateForm button')
+    pg.wait_for_function("document.getElementById('gateMsg').textContent.length > 0")
+    print('Gate wrong:', pg.inner_text('#gateMsg'), '| app hidden:', pg.is_hidden('#appRoot'))
+    pg.fill('#gateInput', gate); pg.click('#gateForm button')
+    pg.wait_for_selector('#appRoot:not(.hidden)', timeout=5000)
+    pg.reload()
+    print('Gate remembered after reload:', pg.is_visible('#appRoot'), '| gate hidden:', pg.is_hidden('#gate'))
     pg.set_input_files('#fileExcel', str(ROOT / '吉伊卡哇登記_最新.xlsx'))
     pg.wait_for_selector('#excelInfo .pill')
     print('Excel:', pg.inner_text('#excelInfo').replace('\n', ' | '))
