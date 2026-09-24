@@ -1,0 +1,18 @@
+{
+  "name": "daigou-order-manager",
+  "version": "1.0.0",
+  "description": "代購訂單管理：截圖辨識 → Excel",
+  "scripts": {
+    "dev": "MOCK=1 APP_PASSWORD=test123 node test/dev-server.js",
+    "test": "node test/run-local.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0"
+  },
+  "private": true,
+  "devDependencies": {
+    "exceljs": "^4.4.0",
+    "xlsx": "^0.18.5"
+  }
+}

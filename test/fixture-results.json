@@ -1,0 +1,13 @@
+[
+  {"fileName":"S__27074572_0.jpg","kind":"catalog","products":[
+    {"name_zh":"南瓜S娃","name_jp":"ちいかわ ちいかわパーク カボチャなうさぎぬいぐるみS","jpy":2420,"price_twd":630},
+    {"name_zh":"幽靈吉","name_jp":"ちいかわ ちいかわパーク ミニマスコットキーリング（おばけなちいかわ）","jpy":1540,"price_twd":400},
+    {"name_zh":"幽靈八","name_jp":"ちいかわ ちいかわパーク ミニマスコットキーリング（おばけなハチワレ）","jpy":1540,"price_twd":400},
+    {"name_zh":"幽靈兔","name_jp":"ちいかわ ちいかわパーク ミニマスコットキーリング（おばけなうさぎ）","jpy":1540,"price_twd":400}
+  ],"orders":[]},
+  {"fileName":"S__27074571_0.jpg","kind":"orders","products":[],"orders":[
+    {"customer":"客人A","items":[{"item":"幽靈兔","qty":2}],"stated_total":800,"shipping":"分擔","raw_text":"幽靈兔 +2 總金額：800 運費：分擔"},
+    {"customer":"客人B","items":[{"item":"幽靈兔","qty":1}],"stated_total":400,"shipping":"分擔","raw_text":"商品：幽靈兔 +1 總金額：400 境內運：分擔"},
+    {"customer":"客人C","items":[{"item":"幽靈八","qty":1}],"stated_total":400,"shipping":"分擔","raw_text":"商品：幽靈八 +1 總金額： $400 境內運：分擔"}
+  ]}
+]

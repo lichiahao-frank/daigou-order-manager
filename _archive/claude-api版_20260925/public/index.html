@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>代購訂單管理</title>
+<style>
+  :root {
+    --bg: #faf7fc; --card: #ffffff; --ink: #2e2236; --muted: #857a8c; --line: #e6dcec;
+    --accent: #7a4b94; --accent-ink: #ffffff; --accent-soft: #f3eaf8;
+    --warn: #b45309; --warn-soft: #fff4e0; --bad: #c0392b; --bad-soft: #fdecea; --ok: #2f7d4f; --ok-soft: #e8f5ec;
+    --new: #fff7d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1620; --card: #251e2b; --ink: #efe8f3; --muted: #a79bb0; --line: #3a3042;
+      --accent: #b58ad0; --accent-ink: #1b1620; --accent-soft: #33283b;
+      --warn: #f0b35a; --warn-soft: #3a2e1c; --bad: #f08a7e; --bad-soft: #3b2220; --ok: #7fcf9c; --ok-soft: #1f3327;
+      --new: #3a351f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  header { padding: 24px 16px 8px; max-width: 1180px; margin: 0 auto; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 22px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  header button { margin-left: auto; }
+  main { max-width: 1180px; margin: 0 auto; padding: 8px 16px 64px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h2 { margin: 0 0 4px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .step { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 700; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px 16px; text-align: center; cursor: pointer; color: var(--muted); transition: .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+  .drop strong { color: var(--ink); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+  label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.link { border: none; background: none; color: var(--accent); padding: 0; text-decoration: underline; }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .pill { background: var(--accent-soft); border-radius: 999px; padding: 3px 12px; font-size: 13px; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+  .thumb { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); position: relative; }
+  .thumb img { width: 100%; height: 150px; object-fit: cover; object-position: top; display: block; }
+  .thumb .meta { padding: 6px 8px; font-size: 12px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+  .thumb .x { position: absolute; top: 4px; right: 4px; padding: 0 7px; border-radius: 50%; background: var(--card); }
+  .tag { border-radius: 6px; padding: 1px 6px; font-size: 12px; white-space: nowrap; }
+  .tag.wait { background: var(--accent-soft); } .tag.busy { background: var(--warn-soft); color: var(--warn); }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); } .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { background: var(--accent-soft); text-align: left; font-weight: 600; padding: 7px 8px; white-space: nowrap; position: sticky; top: 0; }
+  td { border-top: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+  td input, td select { width: 100%; padding: 4px 6px; }
+  td input[type=checkbox] { width: auto; }
+  td.num { text-align: right; white-space: nowrap; padding-top: 9px; }
+  tr.off td:not(:first-child) { opacity: .4; }
+  .warn { color: var(--warn); font-size: 12px; margin-top: 2px; }
+  .raw { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .w-xs { width: 64px; } .w-s { width: 90px; } .w-m { width: 130px; } .w-l { width: 190px; }
+  .section-title { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 8px; gap: 8px; flex-wrap: wrap; }
+  .section-title h3 { margin: 0; font-size: 15px; }
+  .summary { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+  .msg { padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-top: 10px; }
+  .msg.bad { background: var(--bad-soft); color: var(--bad); } .msg.ok { background: var(--ok-soft); color: var(--ok); } .msg.info { background: var(--accent-soft); }
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); max-width: 360px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 代購訂單管理</h1>
+  <span class="sub">丟截圖 → 核對 → 匯出 Excel（Dashboard／Product／Orders）</span>
+  <button id="btnPwd" class="link">變更存取密碼</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2><span class="step">1</span>上傳目前的登記 Excel</h2>
+    <p class="hint">新資料會接在舊資料後面。檔案只在你的瀏覽器裡處理，不會上傳到伺服器。</p>
+    <div id="dropExcel" class="drop"><strong>點這裡選檔，或把 .xlsx 拖進來</strong><br>例：吉伊卡哇登記_最新.xlsx</div>
+    <input id="fileExcel" type="file" accept=".xlsx" class="hidden">
+    <div id="excelInfo"></div>
+    <p class="hint" style="margin-top:10px">沒有舊檔？<button id="btnFresh" class="link">從空白開始建立新檔</button></p>
+  </section>
+
+  <section class="card" id="cardShots">
+    <h2><span class="step">2</span>丟截圖</h2>
+    <p class="hint">商品型錄截圖（有手寫中文名與台幣售價）和客人留言截圖可以一起丟，系統會自動分辨。也可以直接貼上（Ctrl／⌘ + V）。</p>
+    <div class="row">
+      <label class="f">批次名稱（必填）
+        <input id="batch" list="batchOptions" placeholder="例：0924樂園" class="w-l">
+        <datalist id="batchOptions"></datalist>
+      </label>
+      <label class="f">成本匯率（日幣 × ?）
+        <input id="rate" type="number" step="0.001" value="0.2" class="w-s">
+      </label>
+    </div>
+    <div id="dropShots" class="drop"><strong>點這裡選截圖，或把圖片拖進來</strong><br>可一次選多張（JPG／PNG）</div>
+    <input id="fileShots" type="file" accept="image/*" multiple class="hidden">
+    <div id="thumbs" class="thumbs"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="btnParse" class="primary" disabled>開始辨識</button>
+      <span id="parseStatus" class="hint" style="margin:0"></span>
+    </div>
+  </section>
+
+  <section class="card hidden" id="cardReview">
+    <h2><span class="step">3</span>核對辨識結果</h2>
+    <p class="hint">有橘色提示的列請特別確認。取消勾選的列不會寫進 Excel。所有欄位都可以直接修改。</p>
+
+    <div class="section-title">
+      <h3>新商品（寫入 Product）</h3>
+      <button id="addProduct">＋ 新增商品</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>加入</th><th>商品名稱</th><th>日幣</th><th>售價</th><th>成本</th><th>日文品名</th></tr></thead>
+        <tbody id="tbProducts"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">
+      <h3>新訂單（寫入 Orders）</h3>
+      <button id="addOrder">＋ 新增訂單</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>加入</th><th>客人姓名</th><th>商品品項</th><th>數量</th><th>售價</th><th>小計</th><th>境內運</th><th>是否匯款</th><th>來源</th><th>狀態</th></tr></thead>
+        <tbody id="tbOrders"></tbody>
+      </table>
+    </div>
+    <datalist id="itemOptions"></datalist>
+  </section>
+
+  <section class="card hidden" id="cardExport">
+    <h2><span class="step">4</span>匯出 Excel</h2>
+    <div class="summary">
+      <span id="exportSummary" class="hint" style="margin:0"></span>
+      <button id="btnExport" class="primary">下載 Excel</button>
+    </div>
+    <div id="exportMsg"></div>
+  </section>
+</main>
+
+<dialog id="pwdDialog">
+  <form method="dialog">
+    <h3 style="margin-top:0">輸入存取密碼</h3>
+    <p class="hint">這是你在 Vercel 設定的 APP_PASSWORD，只存在這台裝置的瀏覽器。</p>
+    <input id="pwdInput" type="password" style="width:100%" autocomplete="current-password">
+    <div class="row" style="justify-content:flex-end;margin:14px 0 0">
+      <button value="cancel">取消</button>
+      <button value="ok" class="primary">確定</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/exceljs.min.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

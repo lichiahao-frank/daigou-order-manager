@@ -1,0 +1,383 @@
+/* 代購訂單管理：網頁互動 */
+(function () {
+  'use strict';
+  const Core = window.OrderCore;
+  const $ = (id) => document.getElementById(id);
+  const MAX_SIDE = 2400; // 圖片長邊上限，太大會先縮小再送出
+  const CONCURRENCY = 2;
+
+  const state = {
+    existing: null, // readWorkbook 結果
+    fileName: '',
+    shots: [], // {id, file, url, status, error, result}
+    newProducts: [],
+    newOrders: [],
+  };
+
+  // ---------- 密碼 ----------
+  const PWD_KEY = 'order-app-password';
+  function getPwd() {
+    try { return localStorage.getItem(PWD_KEY) || ''; } catch { return ''; }
+  }
+  function setPwd(v) {
+    try { localStorage.setItem(PWD_KEY, v); } catch { /* 無法儲存時每次重問 */ }
+    state.sessionPwd = v;
+  }
+  function askPwd() {
+    return new Promise((resolve) => {
+      const d = $('pwdDialog');
+      $('pwdInput').value = '';
+      d.showModal();
+      d.addEventListener('close', function onClose() {
+        d.removeEventListener('close', onClose);
+        const v = $('pwdInput').value.trim();
+        if (d.returnValue === 'ok' && v) { setPwd(v); resolve(v); } else resolve('');
+      });
+    });
+  }
+  $('btnPwd').onclick = askPwd;
+
+  // ---------- 通用：拖放區 ----------
+  function bindDrop(zone, input, onFiles) {
+    zone.onclick = () => input.click();
+    input.onchange = () => { onFiles([...input.files]); input.value = ''; };
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('over');
+      onFiles([...e.dataTransfer.files]);
+    });
+  }
+  const fmt = (n) => (n == null || n === '' || Number.isNaN(n) ? '' : Number(n).toLocaleString('zh-TW'));
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  // ---------- 步驟 1：Excel ----------
+  bindDrop($('dropExcel'), $('fileExcel'), async (files) => {
+    const f = files.find((x) => /\.xlsx$/i.test(x.name));
+    if (!f) return showExcelMsg('請選 .xlsx 檔', 'bad');
+    try {
+      const buf = await f.arrayBuffer();
+      state.existing = Core.readWorkbook(XLSX, buf);
+      state.fileName = f.name;
+      if (!state.existing.hasOrders && !state.existing.hasProduct) {
+        showExcelMsg('這個檔案裡找不到 Product 或 Orders 分頁，請確認是登記檔', 'bad');
+      }
+      renderExcelInfo();
+      refreshMatches();
+    } catch (e) {
+      showExcelMsg('讀取 Excel 失敗：' + e.message, 'bad');
+    }
+  });
+  $('btnFresh').onclick = () => {
+    state.existing = { products: [], orders: [], extras: [], hasProduct: false, hasOrders: false };
+    state.fileName = '訂單管理.xlsx';
+    renderExcelInfo();
+    refreshMatches();
+  };
+  function showExcelMsg(text, kind) {
+    $('excelInfo').innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`;
+  }
+  function renderExcelInfo() {
+    const ex = state.existing;
+    const batches = Core.batchList(ex.products, ex.orders);
+    $('excelInfo').innerHTML = `<div class="stats">
+      <span class="pill">📄 ${esc(state.fileName)}</span>
+      <span class="pill">商品 ${fmt(ex.products.length)} 筆</span>
+      <span class="pill">訂單 ${fmt(ex.orders.length)} 筆</span>
+      <span class="pill">批次 ${batches.length} 個</span>
+      ${ex.extras.length ? `<span class="pill">其他分頁照原樣保留：${ex.extras.map((e) => esc(e.name)).join('、')}</span>` : ''}
+    </div>`;
+    $('batchOptions').innerHTML = [...batches].reverse().map((b) => `<option value="${esc(b)}">`).join('');
+    updateButtons();
+  }
+
+  // ---------- 步驟 2：截圖 ----------
+  let seq = 0;
+  function addShots(files) {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      state.shots.push({ id: ++seq, file, url: URL.createObjectURL(file), status: 'wait', error: '', result: null });
+    }
+    renderThumbs();
+  }
+  bindDrop($('dropShots'), $('fileShots'), addShots);
+  document.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+    if (files.length) addShots(files);
+  });
+  const STATUS = { wait: ['等待辨識', 'wait'], busy: ['辨識中…', 'busy'], ok: ['完成', 'ok'], bad: ['失敗', 'bad'] };
+  function renderThumbs() {
+    $('thumbs').innerHTML = state.shots.map((s) => {
+      const [label, cls] = STATUS[s.status];
+      const kind = s.result ? { catalog: '型錄', orders: '留言', mixed: '型錄＋留言', other: '無關圖片' }[s.result.kind] || '' : '';
+      const detail = s.result ? `${s.result.products.length} 商品／${s.result.orders.length} 留言` : '';
+      return `<div class="thumb">
+        <img src="${s.url}" alt="${esc(s.file.name)}">
+        <button class="x" data-del="${s.id}" title="移除">×</button>
+        <div class="meta"><span class="tag ${cls}">${label}${kind ? '・' + kind : ''}</span>
+        ${s.status === 'bad' ? `<button class="link" data-retry="${s.id}">重試</button>` : `<span>${detail}</span>`}</div>
+        ${s.error ? `<div class="meta warn">${esc(s.error)}</div>` : ''}
+        ${s.result && s.result.notes ? `<div class="meta raw">${esc(s.result.notes)}</div>` : ''}
+      </div>`;
+    }).join('');
+    updateButtons();
+  }
+  $('thumbs').addEventListener('click', (e) => {
+    const del = e.target.dataset.del, retry = e.target.dataset.retry;
+    if (del) {
+      state.shots = state.shots.filter((s) => String(s.id) !== del);
+      renderThumbs();
+      refreshMatches();
+    }
+    if (retry) {
+      const s = state.shots.find((x) => String(x.id) === retry);
+      s.status = 'wait'; s.error = '';
+      runParse();
+    }
+  });
+
+  function updateButtons() {
+    const pending = state.shots.some((s) => s.status === 'wait');
+    const busy = state.shots.some((s) => s.status === 'busy');
+    $('btnParse').disabled = !state.existing || !pending || busy;
+    $('btnParse').textContent = busy ? '辨識中…' : '開始辨識';
+    const why = !state.existing ? '請先完成步驟 1' : !state.shots.length ? '' : !pending && !busy ? '全部截圖都處理完了' : '';
+    if (!busy) $('parseStatus').textContent = why;
+  }
+
+  // 把圖片縮到合理大小並轉成 base64
+  async function toBase64(file) {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.size < 3.5 * 1024 * 1024 && ['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      return { data: btoa(bin), mediaType: file.type };
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const url = canvas.toDataURL('image/jpeg', 0.9);
+    return { data: url.split(',')[1], mediaType: 'image/jpeg' };
+  }
+
+  function knownItems() {
+    const batch = $('batch').value.trim();
+    const names = new Set();
+    for (const p of state.existing?.products || []) if (p.batch === batch && p.name) names.add(p.name);
+    for (const s of state.shots) for (const p of s.result?.products || []) if (p.name_zh) names.add(p.name_zh);
+    return [...names];
+  }
+
+  async function parseOne(shot) {
+    shot.status = 'busy';
+    renderThumbs();
+    try {
+      let pwd = state.sessionPwd || getPwd();
+      if (!pwd) pwd = await askPwd();
+      if (!pwd) throw new Error('需要存取密碼才能辨識');
+      const img = await toBase64(shot.file);
+      const resp = await fetch('/api/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-app-password': pwd },
+        body: JSON.stringify({ image: img.data, mediaType: img.mediaType, knownItems: knownItems() }),
+      });
+      const body = await resp.json().catch(() => ({ error: `伺服器回應異常（${resp.status}）` }));
+      if (resp.status === 401) {
+        try { localStorage.removeItem(PWD_KEY); } catch { /* 忽略 */ }
+        state.sessionPwd = '';
+      }
+      if (!resp.ok) throw new Error(body.error || `錯誤 ${resp.status}`);
+      shot.result = body.result;
+      shot.status = 'ok';
+    } catch (e) {
+      shot.status = 'bad';
+      shot.error = e.message;
+    }
+    renderThumbs();
+  }
+
+  async function runParse() {
+    if (!$('batch').value.trim()) {
+      $('parseStatus').textContent = '請先填批次名稱';
+      $('batch').focus();
+      return;
+    }
+    // 先確認有密碼，避免多張圖同時跳出密碼框
+    if (!(state.sessionPwd || getPwd()) && !(await askPwd())) return;
+    const queue = state.shots.filter((s) => s.status === 'wait');
+    $('parseStatus').textContent = `辨識中，每張約 10～40 秒…`;
+    const workers = Array.from({ length: CONCURRENCY }, async () => {
+      while (queue.length) await parseOne(queue.shift());
+    });
+    await Promise.all(workers);
+    const failed = state.shots.filter((s) => s.status === 'bad').length;
+    $('parseStatus').textContent = failed ? `有 ${failed} 張失敗，可以按「重試」` : '辨識完成，請到下方核對';
+    refreshMatches();
+  }
+  $('btnParse').onclick = runParse;
+  $('batch').addEventListener('change', refreshMatches);
+  $('rate').addEventListener('input', renderProducts);
+
+  // ---------- 步驟 3：核對 ----------
+  function refreshMatches() {
+    const done = state.shots.filter((s) => s.status === 'ok' && s.result);
+    if (!state.existing || !done.length) {
+      if (!state.newProducts.length && !state.newOrders.length) {
+        $('cardReview').classList.add('hidden');
+        $('cardExport').classList.add('hidden');
+      }
+      return;
+    }
+    const batch = $('batch').value.trim();
+    const results = done.map((s) => ({ fileName: s.file.name, ...s.result }));
+    const m = Core.buildMatches(results, state.existing, batch);
+    // 保留使用者手動新增的列
+    state.newProducts = [...m.newProducts, ...state.newProducts.filter((p) => p.manual)];
+    state.newOrders = [...m.newOrders, ...state.newOrders.filter((o) => o.manual)];
+    for (const o of state.newOrders) o.batch = batch;
+    for (const p of state.newProducts) p.batch = batch;
+    $('cardReview').classList.remove('hidden');
+    $('cardExport').classList.remove('hidden');
+    renderProducts();
+    renderOrders();
+  }
+
+  function batchProducts() {
+    const batch = $('batch').value.trim();
+    const list = (state.existing?.products || []).filter((p) => p.batch === batch);
+    return [...list, ...state.newProducts.filter((p) => p.include && p.name)];
+  }
+  function priceFor(item) {
+    const hit = batchProducts().filter((p) => Core.norm(p.name) === Core.norm(item));
+    return hit.length ? hit[hit.length - 1].price : null;
+  }
+
+  function renderProducts() {
+    const rate = Number($('rate').value) || 0.2;
+    $('tbProducts').innerHTML = state.newProducts.map((p, i) => `
+      <tr class="${p.include ? '' : 'off'}">
+        <td><input type="checkbox" data-p="${i}" data-k="include" ${p.include ? 'checked' : ''}></td>
+        <td class="w-l"><input value="${esc(p.name)}" data-p="${i}" data-k="name">${p.warn ? `<div class="warn">⚠ ${esc(p.warn)}</div>` : ''}</td>
+        <td class="w-s"><input type="number" value="${p.jpy ?? ''}" data-p="${i}" data-k="jpy"></td>
+        <td class="w-s"><input type="number" value="${p.price ?? ''}" data-p="${i}" data-k="price"></td>
+        <td class="num">${p.jpy ? fmt(Math.round(p.jpy * rate)) : ''}</td>
+        <td><input value="${esc(p.jpName)}" data-p="${i}" data-k="jpName"></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="hint" style="padding:12px">這次沒有新商品（訂單會對到此批次已有的商品）</td></tr>';
+    $('itemOptions').innerHTML = batchProducts().map((p) => `<option value="${esc(p.name)}">`).join('');
+    updateSummary();
+  }
+
+  const sel = (opts, v, attrs) => `<select ${attrs}>${['', ...opts].map((o) => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  function renderOrders() {
+    const O = Core.OPTIONS;
+    $('tbOrders').innerHTML = state.newOrders.map((o, i) => {
+      const a = (k) => `data-o="${i}" data-k="${k}"`;
+      const sub = o.price != null && o.qty ? o.price * o.qty : null;
+      return `<tr class="${o.include ? '' : 'off'}">
+        <td><input type="checkbox" ${a('include')} ${o.include ? 'checked' : ''}></td>
+        <td class="w-m"><input value="${esc(o.customer)}" ${a('customer')}></td>
+        <td class="w-l"><input value="${esc(o.item)}" list="itemOptions" ${a('item')}>
+          ${o.warn ? `<div class="warn">⚠ ${esc(o.warn)}</div>` : ''}
+          ${o.rawText ? `<div class="raw">原文：${esc(o.rawText)}</div>` : ''}</td>
+        <td class="w-xs"><input type="number" min="1" value="${o.qty ?? ''}" ${a('qty')}></td>
+        <td class="num">${o.price == null ? '<span class="warn">查無售價</span>' : fmt(o.price)}</td>
+        <td class="num">${fmt(sub)}</td>
+        <td class="w-s">${sel(O.shipping, o.shipping, a('shipping'))}</td>
+        <td class="w-s">${sel(O.payStatus, o.payStatus, a('payStatus'))}</td>
+        <td class="w-s">${sel(O.source, o.source, a('source'))}</td>
+        <td class="w-s">${sel(O.status, o.status, a('status'))}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="10" class="hint" style="padding:12px">這次沒有辨識到訂單</td></tr>';
+    updateSummary();
+  }
+
+  function onEdit(e) {
+    const t = e.target;
+    const k = t.dataset.k;
+    if (!k) return;
+    const isP = t.dataset.p !== undefined;
+    const row = isP ? state.newProducts[t.dataset.p] : state.newOrders[t.dataset.o];
+    let v = t.type === 'checkbox' ? t.checked : t.value;
+    if (['jpy', 'price', 'qty'].includes(k)) v = v === '' ? null : Number(v);
+    row[k] = v;
+    if (isP) {
+      // 商品改了 → 訂單售價重算
+      for (const o of state.newOrders) o.price = priceFor(o.item);
+      if (e.type === 'change') { renderProducts(); renderOrders(); } else updateSummary();
+    } else {
+      if (k === 'item') row.price = priceFor(v);
+      if (e.type === 'change' || k === 'include') renderOrders();
+      else updateSummary();
+    }
+  }
+  $('cardReview').addEventListener('change', onEdit);
+
+  $('addProduct').onclick = () => {
+    state.newProducts.push({ include: true, manual: true, batch: $('batch').value.trim(), name: '', jpName: '', jpy: null, price: null, isNew: true, warn: '' });
+    renderProducts();
+  };
+  $('addOrder').onclick = () => {
+    state.newOrders.push({ include: true, manual: true, batch: $('batch').value.trim(), item: '', customer: '', qty: 1, price: null, shipping: '分擔', payMethod: '', payStatus: '未匯款', source: '社群', status: '未出貨', isNew: true, warn: '' });
+    renderOrders();
+  };
+
+  // ---------- 步驟 4：匯出 ----------
+  function picked() {
+    return {
+      products: state.newProducts.filter((p) => p.include && p.name),
+      orders: state.newOrders.filter((o) => o.include && o.item),
+    };
+  }
+  function updateSummary() {
+    const { products, orders } = picked();
+    const total = orders.reduce((s, o) => s + (o.price || 0) * (o.qty || 0), 0);
+    const missing = orders.filter((o) => o.price == null).length;
+    $('exportSummary').innerHTML = `將新增 <b>${products.length}</b> 個商品、<b>${orders.length}</b> 筆訂單，合計 <b>$${fmt(total)}</b>` +
+      (missing ? `　<span class="warn">⚠ 有 ${missing} 筆訂單查無售價（品項名稱對不到商品）</span>` : '');
+  }
+
+  function today() {
+    const d = new Date();
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  $('btnExport').onclick = async () => {
+    const batch = $('batch').value.trim();
+    if (!batch) return ($('exportMsg').innerHTML = '<div class="msg bad">請先填批次名稱</div>');
+    const { products, orders } = picked();
+    const btn = $('btnExport');
+    btn.disabled = true;
+    btn.textContent = '產生中…';
+    try {
+      const ex = state.existing;
+      const data = {
+        products: [...ex.products, ...products.map((p) => ({ ...p, batch, cost: null, stock: null }))],
+        orders: [...ex.orders, ...orders.map((o) => ({ ...o, batch }))],
+        extras: ex.extras,
+      };
+      const now = new Date();
+      const wb = Core.buildWorkbook(ExcelJS, data, {
+        rate: Number($('rate').value) || 0.2,
+        newBatches: [batch],
+        generatedAt: now.toLocaleString('zh-TW', { hour12: false }),
+      });
+      const buf = await wb.xlsx.writeBuffer();
+      const name = Core.outputFileName(state.fileName, today());
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      $('exportMsg').innerHTML = `<div class="msg ok">已下載 <b>${esc(name)}</b>。下次更新時，請上傳這個新檔案。</div>`;
+    } catch (e) {
+      $('exportMsg').innerHTML = `<div class="msg bad">產生 Excel 失敗：${esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '下載 Excel';
+    }
+  };
+})();

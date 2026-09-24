@@ -1,0 +1,19 @@
+{
+  "name": "daigou-order-manager",
+  "version": "1.0.0",
+  "description": "代購訂單管理：截圖辨識 → Excel",
+  "scripts": {
+    "build": "esbuild src/ocr-worker.js --bundle --format=esm --platform=browser --minify --outfile=public/vendor/ocr-worker.js",
+    "dev": "python3 -m http.server 5173 --directory public",
+    "test": "node test/run-local.js && node test/parse-test.js"
+  },
+  "type": "commonjs",
+  "private": true,
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "exceljs": "^4.4.0",
+    "onnxruntime-web": "^1.30.0",
+    "ppu-paddle-ocr": "^6.6.0",
+    "xlsx": "^0.18.5"
+  }
+}
