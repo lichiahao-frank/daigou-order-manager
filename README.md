@@ -1,5 +1,7 @@
 # 代購訂單管理（截圖 → Excel，免費版）
 
+**網址：https://lichiahao-frank.github.io/daigou-order-manager/**
+
 所有處理都在使用者自己的瀏覽器裡完成：Excel 和截圖都不會上傳，不需要伺服器、不需要 API 金鑰。
 
 ## 怎麼用
@@ -39,5 +41,6 @@ npm test        # Excel 產生測試 + 留言解析規則測試
 npm run dev     # 本機開 http://localhost:5173
 ```
 
-網站本身是 `public/` 資料夾裡的靜態檔案，可以放在任何靜態網站空間。
+網站本身是 `public/` 資料夾裡的靜態檔案。推送到 `main` 後，GitHub Actions（`.github/workflows/pages.yml`）會自動發布到 GitHub Pages。
+依 GitHub Pages 條款，本站不可用於收費的商業服務（SaaS）或交易。
 舊的 Claude API 版封存在 `_archive/claude-api版_20260925/`。
